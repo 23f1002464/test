@@ -23,8 +23,7 @@ class AnalyticsRequest(BaseModel):
 # Load the telemetry data
 def load_telemetry_data():
     try:
-        # In production, this would come from a database or external source
-        # For now, we'll use sample data structure based on the requirements
+        # Using the provided telemetry data
         return [
   {
     "region": "apac",
@@ -324,9 +323,9 @@ async def analyze_latency(request: AnalyticsRequest):
                 }
                 continue
             
-            # Extract metrics
-            latencies = [item["latency"] for item in region_data]
-            uptimes = [item["uptime"] for item in region_data]
+            # Extract metrics - CORRECTED FIELD NAMES
+            latencies = [item["latency_ms"] for item in region_data]  # Changed from "latency" to "latency_ms"
+            uptimes = [item["uptime_pct"] for item in region_data]    # Changed from "uptime" to "uptime_pct"
             
             # Calculate statistics
             avg_latency = statistics.mean(latencies) if latencies else 0
