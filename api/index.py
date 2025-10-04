@@ -8,12 +8,13 @@ import os
 
 app = FastAPI()
 
-# Enable CORS
+# Enable CORS - CORRECTED CONFIGURATION
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["POST"],
-    allow_headers=["*"],
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
 )
 
 class AnalyticsRequest(BaseModel):
@@ -323,9 +324,9 @@ async def analyze_latency(request: AnalyticsRequest):
                 }
                 continue
             
-            # Extract metrics - CORRECTED FIELD NAMES
-            latencies = [item["latency_ms"] for item in region_data]  # Changed from "latency" to "latency_ms"
-            uptimes = [item["uptime_pct"] for item in region_data]    # Changed from "uptime" to "uptime_pct"
+            # Extract metrics
+            latencies = [item["latency_ms"] for item in region_data]
+            uptimes = [item["uptime_pct"] for item in region_data]
             
             # Calculate statistics
             avg_latency = statistics.mean(latencies) if latencies else 0
@@ -348,3 +349,8 @@ async def analyze_latency(request: AnalyticsRequest):
 @app.get("/")
 async def root():
     return {"message": "Latency Analytics API", "status": "running"}
+
+# Add OPTIONS handler for CORS preflight requests
+@app.options("/api/latency")
+async def options_latency():
+    return {"message": "OK"}
