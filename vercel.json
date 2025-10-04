@@ -1,14 +1,14 @@
 {
   "builds": [
     {
-      "src": "api/latency.py",
+      "src": "api/index.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
-      "src": "/(.*)",
-      "dest": "api/latency.py"
+      "src": "/api/latency",
+      "dest": "api/index.py"
     }
   ]
 }
