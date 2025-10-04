@@ -1,10 +1,31 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import numpy as np
+from typing import List, Dict, Any
+from fastapi.middleware.cors import CORSMiddleware
+import statistics
+import json
+import os
 
-# Sample telemetry data (replace/add more records as needed)
-telemetry = [
+app = FastAPI()
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["POST"],
+    allow_headers=["*"],
+)
+
+class AnalyticsRequest(BaseModel):
+    regions: List[str]
+    threshold_ms: int
+
+# Load the telemetry data
+def load_telemetry_data():
+    try:
+        # In production, this would come from a database or external source
+        # For now, we'll use sample data structure based on the requirements
+        return [
   {
     "region": "apac",
     "service": "catalog",
@@ -256,56 +277,75 @@ telemetry = [
     "latency_ms": 134.05,
     "uptime_pct": 98.826,
     "timestamp": 20250312
-  }
-]
+  }]
+    except Exception as e:
+        print(f"Error loading telemetry data: {e}")
+        return []
 
-# Organize data per region
-region_data = {}
-for record in telemetry:
-    region = record["region"]
-    region_data.setdefault(region, []).append(record)
+def calculate_percentile(data: List[float], percentile: float) -> float:
+    """Calculate percentile from a list of values"""
+    if not data:
+        return 0.0
+    sorted_data = sorted(data)
+    index = (len(sorted_data) - 1) * percentile / 100
+    lower_index = int(index)
+    upper_index = lower_index + 1
+    
+    if upper_index >= len(sorted_data):
+        return sorted_data[lower_index]
+    
+    weight = index - lower_index
+    return sorted_data[lower_index] * (1 - weight) + sorted_data[upper_index] * weight
 
-app = FastAPI()
-
-# Enable CORS for POST requests from any origin
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["POST"],
-    allow_headers=["*"],
-)
-
-class Query(BaseModel):
-    regions: list[str]
-    threshold_ms: float
-
-@app.post("/latency")
-async def get_latency(query: Query):
-    results = {}
-    for region in query.regions:
-        records = region_data.get(region, [])
-        if not records:
+@app.post("/api/latency")
+async def analyze_latency(request: AnalyticsRequest):
+    try:
+        # Load telemetry data
+        telemetry_data = load_telemetry_data()
+        
+        # Filter data for requested regions
+        filtered_data = [item for item in telemetry_data if item["region"] in request.regions]
+        
+        if not filtered_data:
+            raise HTTPException(status_code=404, detail="No data found for specified regions")
+        
+        # Calculate metrics per region
+        results = {}
+        
+        for region in request.regions:
+            region_data = [item for item in filtered_data if item["region"] == region]
+            
+            if not region_data:
+                results[region] = {
+                    "avg_latency": 0,
+                    "p95_latency": 0,
+                    "avg_uptime": 0,
+                    "breaches": 0
+                }
+                continue
+            
+            # Extract metrics
+            latencies = [item["latency"] for item in region_data]
+            uptimes = [item["uptime"] for item in region_data]
+            
+            # Calculate statistics
+            avg_latency = statistics.mean(latencies) if latencies else 0
+            p95_latency = calculate_percentile(latencies, 95)
+            avg_uptime = statistics.mean(uptimes) if uptimes else 0
+            breaches = sum(1 for latency in latencies if latency > request.threshold_ms)
+            
             results[region] = {
-                "avg_latency": None,
-                "p95_latency": None,
-                "avg_uptime": None,
-                "breaches": 0
+                "avg_latency": round(avg_latency, 2),
+                "p95_latency": round(p95_latency, 2),
+                "avg_uptime": round(avg_uptime, 4),
+                "breaches": breaches
             }
-            continue
+        
+        return results
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-        latencies = [r["latency_ms"] for r in records]
-        uptimes = [r["uptime_pct"] for r in records]
-
-        avg_latency = float(np.mean(latencies))
-        p95_latency = float(np.percentile(latencies, 95))
-        avg_uptime = float(np.mean(uptimes))
-        breaches = sum(1 for l in latencies if l > query.threshold_ms)
-
-        results[region] = {
-            "avg_latency": round(avg_latency, 2),
-            "p95_latency": round(p95_latency, 2),
-            "avg_uptime": round(avg_uptime, 2),
-            "breaches": breaches
-        }
-
-    return results
+@app.get("/")
+async def root():
+    return {"message": "Latency Analytics API", "status": "running"}
