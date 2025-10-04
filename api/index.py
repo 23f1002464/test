@@ -1,21 +1,25 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Dict, Any
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import statistics
 import json
 import os
 
 app = FastAPI()
 
-# Enable CORS - CORRECTED CONFIGURATION
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
+# Manual CORS middleware - this will definitely work
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    if request.method == "OPTIONS":
+        response = JSONResponse(content={"message": "OK"})
+    else:
+        response = await call_next(request)
+    
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS, PUT, DELETE"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+    return response
 
 class AnalyticsRequest(BaseModel):
     regions: List[str]
@@ -23,9 +27,7 @@ class AnalyticsRequest(BaseModel):
 
 # Load the telemetry data
 def load_telemetry_data():
-    try:
-        # Using the provided telemetry data
-        return [
+    return [
   {
     "region": "apac",
     "service": "catalog",
@@ -278,9 +280,6 @@ def load_telemetry_data():
     "uptime_pct": 98.826,
     "timestamp": 20250312
   }]
-    except Exception as e:
-        print(f"Error loading telemetry data: {e}")
-        return []
 
 def calculate_percentile(data: List[float], percentile: float) -> float:
     """Calculate percentile from a list of values"""
@@ -346,11 +345,18 @@ async def analyze_latency(request: AnalyticsRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+# Explicit OPTIONS handler for preflight requests
+@app.options("/api/latency")
+async def options_latency():
+    return JSONResponse(
+        content={"message": "OK"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type"
+        }
+    )
+
 @app.get("/")
 async def root():
     return {"message": "Latency Analytics API", "status": "running"}
-
-# Add OPTIONS handler for CORS preflight requests
-@app.options("/api/latency")
-async def options_latency():
-    return {"message": "OK"}
