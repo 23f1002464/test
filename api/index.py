@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import numpy as np
@@ -6,13 +6,12 @@ import json
 import os
 
 # Load telemetry dataset once at startup
-# Assume bundle is a local JSON file uploaded with repo
 with open(os.path.join(os.path.dirname(__file__), "telemetry.json")) as f:
     telemetry = json.load(f)
 
 app = FastAPI()
 
-# Enable CORS
+# Enable CORS for POST requests from any origin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,7 +24,7 @@ class Query(BaseModel):
     threshold_ms: int
 
 @app.post("/latency")
-async def get_metrics(query: Query):
+async def get_latency(query: Query):
     results = {}
     
     for region in query.regions:
@@ -34,7 +33,7 @@ async def get_metrics(query: Query):
             continue
         
         latencies = [r["latency_ms"] for r in records]
-        uptimes = [r["uptime"] for r in records]  # assume uptime is a float %
+        uptimes = [r["uptime"] for r in records]
         
         avg_latency = float(np.mean(latencies))
         p95_latency = float(np.percentile(latencies, 95))
