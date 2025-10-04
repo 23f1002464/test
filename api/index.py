@@ -5,9 +5,16 @@ import numpy as np
 import json
 import os
 
-# Load telemetry dataset once at startup
-with open(os.path.join(os.path.dirname(__file__), "telemetry.json")) as f:
-    telemetry = json.load(f)
+# Load telemetry JSON
+telemetry_file = os.path.join(os.path.dirname(__file__), "telemetry.json")
+with open(telemetry_file) as f:
+    raw_data = json.load(f)
+
+# Organize data per region
+telemetry = {}
+for record in raw_data:
+    region = record["region"]
+    telemetry.setdefault(region, []).append(record)
 
 app = FastAPI()
 
@@ -21,7 +28,7 @@ app.add_middleware(
 
 class Query(BaseModel):
     regions: list[str]
-    threshold_ms: int
+    threshold_ms: float
 
 @app.post("/latency")
 async def get_latency(query: Query):
@@ -30,10 +37,16 @@ async def get_latency(query: Query):
     for region in query.regions:
         records = telemetry.get(region, [])
         if not records:
+            results[region] = {
+                "avg_latency": None,
+                "p95_latency": None,
+                "avg_uptime": None,
+                "breaches": 0
+            }
             continue
         
         latencies = [r["latency_ms"] for r in records]
-        uptimes = [r["uptime"] for r in records]
+        uptimes = [r["uptime_pct"] for r in records]
         
         avg_latency = float(np.mean(latencies))
         p95_latency = float(np.percentile(latencies, 95))
