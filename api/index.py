@@ -2,19 +2,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import numpy as np
-import json
-import os
 
-# Load telemetry JSON
-telemetry_file = os.path.join(os.path.dirname(__file__), "telemetry.json")
-with open(telemetry_file) as f:
-    raw_data = json.load(f)
+# Sample telemetry data (replace with your real data)
+telemetry = [
+    {"region": "apac", "service": "catalog", "latency_ms": 103.67, "uptime_pct": 99.269, "timestamp": 20250301},
+    {"region": "apac", "service": "support", "latency_ms": 206.81, "uptime_pct": 98.88, "timestamp": 20250302}
+]
 
 # Organize data per region
-telemetry = {}
-for record in raw_data:
+region_data = {}
+for record in telemetry:
     region = record["region"]
-    telemetry.setdefault(region, []).append(record)
+    region_data.setdefault(region, []).append(record)
 
 app = FastAPI()
 
@@ -33,9 +32,8 @@ class Query(BaseModel):
 @app.post("/latency")
 async def get_latency(query: Query):
     results = {}
-    
     for region in query.regions:
-        records = telemetry.get(region, [])
+        records = region_data.get(region, [])
         if not records:
             results[region] = {
                 "avg_latency": None,
@@ -44,20 +42,20 @@ async def get_latency(query: Query):
                 "breaches": 0
             }
             continue
-        
+
         latencies = [r["latency_ms"] for r in records]
         uptimes = [r["uptime_pct"] for r in records]
-        
+
         avg_latency = float(np.mean(latencies))
         p95_latency = float(np.percentile(latencies, 95))
         avg_uptime = float(np.mean(uptimes))
         breaches = sum(1 for l in latencies if l > query.threshold_ms)
-        
+
         results[region] = {
             "avg_latency": round(avg_latency, 2),
             "p95_latency": round(p95_latency, 2),
             "avg_uptime": round(avg_uptime, 2),
             "breaches": breaches
         }
-    
+
     return results
